@@ -40,7 +40,7 @@ Edit `backend/.env` and set the PostgreSQL password. Then:
 ```powershell
 python manage.py makemigrations core
 python manage.py migrate
-python manage.py runserver
+python manage.py runserver 
 ```
 
 Backend: http://127.0.0.1:8000/api/

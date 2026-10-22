@@ -25,11 +25,37 @@ class FocusSessionViewSet(viewsets.ModelViewSet):
 def health(request):
     return Response({"status": "ok", "app": "Focus2Finish"})
 
+
 @api_view(["GET"])
 def next_activity(request):
-    task = Task.objects.filter(status__in=["todo", "in_progress"]).order_by("scheduled_date", "created_at").first()
+    # Check whether a redirect has been requested.
+    # For now, this is a test parameter; Android will supply
+    # real usage information later.
+    threshold_reached = (
+        request.query_params.get("threshold_reached", "false").lower()
+        == "true"
+    )
+
+    # If the threshold has not been reached, do not prompt the user.
+    if not threshold_reached:
+        return Response({
+            "should_redirect": False,
+            "reason": "threshold_not_reached",
+            "message": "You're all good. No redirect is needed right now."
+        })
+
+    # Prefer an unfinished task.
+    task = (
+        Task.objects
+        .filter(status__in=["todo", "in_progress"])
+        .order_by("scheduled_date", "created_at")
+        .first()
+    )
+
     if task:
         return Response({
+            "should_redirect": True,
+            "reason": "recreational_limit_reached",
             "type": "task",
             "title": task.title,
             "description": task.description,
@@ -37,17 +63,43 @@ def next_activity(request):
             "estimated_minutes": task.estimated_minutes,
             "task_id": task.id,
             "url": None,
+            "message": (
+                "You've reached your recreational-use limit. "
+                "Ready to make progress on your planned task?"
+            )
         })
-    resource = LearningResource.objects.filter(completed=False).first()
+
+    # If there are no unfinished tasks, look for a learning resource.
+    resource = LearningResource.objects.filter(
+        completed=False
+    ).order_by("id").first()
+
     if resource:
         return Response({
+            "should_redirect": True,
+            "reason": "recreational_limit_reached",
             "type": "resource",
             "title": resource.title,
             "estimated_minutes": resource.estimated_minutes,
             "url": resource.url,
             "resource_id": resource.id,
+            "message": (
+                "You've reached your recreational-use limit. "
+                "Would you like to continue learning?"
+            )
         })
-    return Response({"type": "empty", "title": "No activities yet", "message": "Add a task or learning resource to your queue."})
+
+    # Nothing is planned, so do not force a redirect.
+    return Response({
+        "should_redirect": False,
+        "reason": "no_planned_activity",
+        "type": "empty",
+        "title": "Nothing planned right now",
+        "message": (
+            "You have no queued activities. You can relax or "
+            "add a task for your next focus session."
+        )
+    })
 
 @api_view(["POST"])
 def finish_session(request, pk):
